@@ -1,0 +1,371 @@
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Tables } from '@/integrations/supabase/types';
+import { Button } from "@/components/ui/button";
+import { UserIcon, CalendarIcon, FileIcon, UsersIcon } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+
+export function AdminDashboard() {
+  const [stats, setStats] = useState({ totalMRs: 0, mrIncrease: 0, totalDoctors: 0, doctorIncrease: 0, totalVisits: 0, visitIncrease: 0, totalOrderValue: 0, orderIncrease: 0 });
+  const [visitTrend, setVisitTrend] = useState([]);
+  const [topMRs, setTopMRs] = useState([]);
+  const [pendingReports, setPendingReports] = useState([]);
+  const [pendingVisits, setPendingVisits] = useState([]);
+  const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  async function fetchData() {
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch data for stats
+      const { count: totalMRs, error: mrsError } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .eq('role', 'mr');
+      if (mrsError) throw mrsError;
+
+      const { count: totalDoctors, error: doctorsError } = await supabase
+        .from('doctors')
+        .select('*', { count: 'exact', head: true });
+      if (doctorsError) throw doctorsError;
+
+      const { count: totalVisits, error: visitsError } = await supabase
+        .from('visits')
+        .select('*', { count: 'exact', head: true });
+      if (visitsError) throw visitsError;
+
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('visit_orders')
+        .select('price, quantity');
+      if (ordersError) throw ordersError;
+      const totalOrderValue = ordersData ? ordersData.reduce((sum, order) => sum + (order.price * order.quantity), 0) : 0;
+
+      // For monthly increases, we would need to fetch data for the previous month as well and compare.
+      // This is a simplified implementation fetching only current totals.
+      setStats({
+        totalMRs: totalMRs || 0,
+        mrIncrease: 0, // Placeholder
+        totalDoctors: totalDoctors || 0,
+        doctorIncrease: 0, // Placeholder
+        totalVisits: totalVisits || 0,
+        visitIncrease: 0, // Placeholder
+        totalOrderValue: totalOrderValue,
+        orderIncrease: 0, // Placeholder
+      });
+
+      // Calculate date 6 months ago
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      const sixMonthsAgoISO = sixMonthsAgo.toISOString();
+
+      // Fetch data for visit trend (fetching visits and orders from the last 6 months)
+      const { data: allVisits, error: allVisitsError } = await supabase
+        .from('visits')
+        .select('date')
+        .gte('date', sixMonthsAgoISO);
+      if (allVisitsError) throw allVisitsError;
+
+      const { data: allOrders, error: allOrdersError } = await supabase
+        .from('visit_orders')
+        .select('date: visits(date)') // Assuming visit_orders has a foreign key to visits
+        .gte('visits.date', sixMonthsAgoISO); // Filter based on the date of the related visit
+      if (allOrdersError) throw allOrdersError;
+
+      // Process visit and order data to get monthly trends (simplified aggregation)
+      const monthlyData: { [key: string]: { visits: number, orders: number } } = {};
+      allVisits?.forEach(visit => {
+        const month = new Date(visit.date).toLocaleString('default', { month: 'short', year: 'numeric' });
+        if (!monthlyData[month]) monthlyData[month] = { visits: 0, orders: 0 };
+        monthlyData[month].visits++;
+      });
+       allOrders?.forEach(order => {
+        const month = new Date(order.date?.date).toLocaleString('default', { month: 'short', year: 'numeric' });
+        if (!monthlyData[month]) monthlyData[month] = { visits: 0, orders: 0 };
+        monthlyData[month].orders++;
+      });
+
+      const visitTrendArray = Object.keys(monthlyData).map(month => ({ month, ...monthlyData[month] }));
+      // Sort the months chronologically
+      visitTrendArray.sort((a, b) => new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime());
+      setVisitTrend(visitTrendArray);
+
+
+      // Fetch data for top MRs (simplified - fetching profiles and assuming visits/orders can be joined/aggregated)
+      const { data: mrsData, error: mrsDataError } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .eq('role', 'mr');
+      if (mrsDataError) throw mrsDataError;
+
+      // This part would require complex joins and aggregations in SQL or significant data processing here.
+      // For simplicity, I'll just list the MRs fetched. Real aggregation would be needed.
+      setTopMRs(mrsData?.map(mr => ({ name: mr.name, visits: 0, orderValue: 0 })) || []); // Placeholders
+
+      // Fetch pending visits with MR information
+      const { data: pendingVisitsData, error: pendingVisitsError } = await supabase
+        .from('visits')
+        .select(`
+          id,
+          date,
+          mr_id,
+          doctors(name)
+        `)
+        .eq('status', 'pending');
+
+      if (pendingVisitsError) throw pendingVisitsError;
+
+      // Get the MR names in a separate query
+      const mrIds = pendingVisitsData?.map(visit => visit.mr_id) || [];
+      const { data: mrData, error: mrError } = await supabase
+        .from('profiles')
+        .select('id, name')
+        .in('id', mrIds);
+
+      if (mrError) throw mrError;
+
+      // Create a map of MR IDs to names
+      const mrMap = new Map(mrData?.map(mr => [mr.id, mr.name]) || []);
+
+      // Format pending visits data
+      const formattedPendingVisits = pendingVisitsData?.map(visit => ({
+        id: visit.id,
+        name: mrMap.get(visit.mr_id) || 'Unknown MR',
+        type: 'Visit' as const,
+        date: new Date(visit.date).toLocaleDateString(),
+        doctorName: visit.doctors?.name
+      })) || [];
+
+      // Update the pendingApprovals state
+      setPendingApprovals(formattedPendingVisits);
+
+    } catch (error: any) {
+      setError(error.message);
+      console.error("Error fetching admin dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchData();
+  }, []); // Added empty dependency array
+
+  const handleApprove = async (id: number, type: 'Report' | 'Visit') => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (type === 'Report') {
+        const { error } = await supabase
+          .from('reports')
+          .update({ status: 'approved' })
+          .eq('id', id.toString());
+        if (error) throw error;
+      } else if (type === 'Visit') {
+        const { error } = await supabase
+          .from('visits')
+          .update({ status: 'approved' })
+          .eq('id', id.toString());
+        if (error) throw error;
+      }
+      fetchData(); // Refresh data
+    } catch (error: any) {
+      setError(error.message);
+      console.error(`Error approving ${type}:`, error);
+      setLoading(false); // Stop loading on error
+    }
+  };
+
+  const handleReject = async (id: number, type: 'Report' | 'Visit') => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (type === 'Report') {
+        const { error } = await supabase
+          .from('reports')
+          .update({ status: 'rejected' })
+          .eq('id', id.toString());
+        if (error) throw error;
+      } else if (type === 'Visit') {
+        const { error } = await supabase
+          .from('visits')
+          .update({ status: 'rejected' })
+          .eq('id', id.toString());
+        if (error) throw error;
+      }
+      fetchData(); // Refresh data
+    } catch (error: any) {
+      setError(error.message);
+      console.error(`Error rejecting ${type}:`, error);
+      setLoading(false); // Stop loading on error
+    }
+  };
+
+
+  if (loading) {
+    return <div className="text-center">Loading dashboard data...</div>;
+  }
+
+  if (error) {
+    return <div className="text-center text-red-500">Error loading dashboard data: {error}</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+        <p className="text-muted-foreground">Welcome to MR Tracking Management</p>
+      </div>
+
+      {/* Stats cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total MRs</CardTitle>
+            <UsersIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalMRs}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.mrIncrease > 0 ? "+" : ""}{stats.mrIncrease}% from last month
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Doctors</CardTitle>
+            <UserIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalDoctors}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.doctorIncrease > 0 ? "+" : ""}{stats.doctorIncrease}% from last month
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Visits</CardTitle>
+            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.totalVisits}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.visitIncrease > 0 ? "+" : ""}{stats.visitIncrease}% from last month
+            </p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+            <FileIcon className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">₹{stats.totalOrderValue.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">
+              {stats.orderIncrease > 0 ? "+" : ""}{stats.orderIncrease}% from last month
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Visits/Orders Chart */}
+      <Card className="col-span-full">
+        <CardHeader>
+          <CardTitle>Visit Trends</CardTitle>
+        </CardHeader>
+        <CardContent className="h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={visitTrend} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis yAxisId="left" />
+              <YAxis yAxisId="right" orientation="right" />
+              <Tooltip />
+              <Legend />
+              <Bar yAxisId="left" dataKey="visits" name="Visits" fill="#0EA5E9" />
+              <Bar yAxisId="right" dataKey="orders" name="Orders" fill="#0891B2" />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Top MRs */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Top Performing MRs</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {topMRs.map((mr, index) => (
+                <div key={index} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Avatar>
+                      <AvatarFallback className="bg-primary text-primary-foreground">
+                        {mr.name.split(" ").map(n => n[0]).join("")}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="text-sm font-medium">{mr.name}</p>
+                      <p className="text-xs text-muted-foreground">{mr.visits} visits</p>
+                    </div>
+                  </div>
+                  <div className="text-sm font-medium">₹{mr.orderValue.toLocaleString()}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Pending Approvals */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Pending Approvals</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {pendingApprovals.map((item, index) => (
+                <div key={index} className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{item.type} • {item.date}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => handleReject(item.id, item.type)}>Reject</Button>
+                    <Button size="sm" onClick={() => handleApprove(item.id, item.type)}>Approve</Button>
+                  </div>
+                </div>
+              ))}
+              {pendingApprovals.length === 0 && (
+                <p className="text-center text-muted-foreground py-4">No pending approvals</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// Helper components for AdminDashboard
+function Avatar({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="h-9 w-9 rounded-full flex items-center justify-center overflow-hidden">
+      {children}
+    </div>
+  );
+}
+
+function AvatarFallback({ className, children }: { className?: string, children: React.ReactNode }) {
+  return (
+    <div className={`w-full h-full flex items-center justify-center ${className}`}>
+      {children}
+    </div>
+  );
+}
