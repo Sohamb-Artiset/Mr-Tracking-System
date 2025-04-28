@@ -11,12 +11,16 @@ import {
   Pill
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { useUser } from "@/context/UserContext"; // Import useUser
 
 interface NavigationProps {
   userRole: string;
 }
 
 export function Navigation({ userRole }: NavigationProps) {
+  const { user } = useUser(); // Get user from context
+  const isInactiveMr = user?.role === 'mr' && user?.status === 'inactive';
+
   // Admin navigation items
   const adminNavItems = [
     {
@@ -51,8 +55,8 @@ export function Navigation({ userRole }: NavigationProps) {
     },
   ];
 
-  // MR navigation items
-  const mrNavItems = [
+  // Base MR navigation items
+  let mrNavItems = [
     {
       title: "Dashboard",
       href: "/mr/dashboard",
@@ -79,6 +83,11 @@ export function Navigation({ userRole }: NavigationProps) {
       icon: FileIcon,
     },
   ];
+
+  // Filter out "Log Visit" if MR is inactive
+  if (isInactiveMr) {
+    mrNavItems = mrNavItems.filter(item => item.href !== "/mr/visits/new");
+  }
 
   // Choose which navigation items to show based on user role
   const navItems = userRole === "admin" ? adminNavItems : mrNavItems;

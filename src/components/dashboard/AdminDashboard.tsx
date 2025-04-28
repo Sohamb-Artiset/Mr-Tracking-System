@@ -6,15 +6,94 @@ import { Button } from "@/components/ui/button";
 import { UserIcon, CalendarIcon, FileIcon, UsersIcon } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
+interface VisitOrder {
+  quantity: number;
+  price: number;
+}
+
+interface Visit {
+  id: string;
+  mr_id: string;
+  visit_orders: VisitOrder[];
+}
+
+interface MRPerformance {
+  name: string;
+  visits: number;
+  orderValue: number;
+}
+
+interface SupabaseError {
+  message: string;
+  code?: string;
+}
+
+interface VisitTrendItem {
+  month: string;
+  visits: number;
+  orders: number;
+}
+
+interface PendingApproval {
+  id: string;
+  name: string;
+  type: 'Visit';
+  date: string;
+  doctorName?: string;
+}
+
+interface PendingReport {
+  id: string;
+  date: string;
+  status: string;
+}
+
+interface PendingVisit {
+  id: string;
+  date: string;
+  doctorName: string;
+}
+
+interface MonthlyData {
+  [key: string]: {
+    visits: number;
+    orders: number;
+  };
+}
+
+interface VisitData {
+  date: string;
+}
+
+interface OrderData {
+  date: {
+    date: string;
+  };
+}
+
+interface PendingVisitData {
+  id: string;
+  date: string;
+  mr_id: string;
+  doctors: {
+    name: string;
+  };
+}
+
+interface MRProfile {
+  id: string;
+  name: string;
+}
+
 export function AdminDashboard() {
   const [stats, setStats] = useState({ totalMRs: 0, mrIncrease: 0, totalDoctors: 0, doctorIncrease: 0, totalVisits: 0, visitIncrease: 0, totalOrderValue: 0, orderIncrease: 0 });
-  const [visitTrend, setVisitTrend] = useState([]);
-  const [topMRs, setTopMRs] = useState([]);
-  const [pendingReports, setPendingReports] = useState([]);
-  const [pendingVisits, setPendingVisits] = useState([]);
-  const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [visitTrend, setVisitTrend] = useState<VisitTrendItem[]>([]);
+  const [topMRs, setTopMRs] = useState<MRPerformance[]>([]);
+  const [pendingReports, setPendingReports] = useState<PendingReport[]>([]);
+  const [pendingVisits, setPendingVisits] = useState<PendingVisit[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function fetchData() {
     setLoading(true);
@@ -70,26 +149,44 @@ export function AdminDashboard() {
 
       const { data: allOrders, error: allOrdersError } = await supabase
         .from('visit_orders')
-        .select('date: visits(date)') // Assuming visit_orders has a foreign key to visits
-        .gte('visits.date', sixMonthsAgoISO); // Filter based on the date of the related visit
+        .select('date: visits(date)')
+        .gte('visits.date', sixMonthsAgoISO);
       if (allOrdersError) throw allOrdersError;
 
-      // Process visit and order data to get monthly trends (simplified aggregation)
-      const monthlyData: { [key: string]: { visits: number, orders: number } } = {};
-      allVisits?.forEach(visit => {
+      // Process visit and order data to get monthly trends
+      const monthlyData: MonthlyData = {};
+      (allVisits as VisitData[])?.forEach(visit => {
         const month = new Date(visit.date).toLocaleString('default', { month: 'short', year: 'numeric' });
         if (!monthlyData[month]) monthlyData[month] = { visits: 0, orders: 0 };
         monthlyData[month].visits++;
       });
-       allOrders?.forEach(order => {
-        const month = new Date(order.date?.date).toLocaleString('default', { month: 'short', year: 'numeric' });
+      (allOrders as OrderData[])?.forEach(order => {
+        const month = new Date(order.date.date).toLocaleString('default', { month: 'short', year: 'numeric' });
         if (!monthlyData[month]) monthlyData[month] = { visits: 0, orders: 0 };
         monthlyData[month].orders++;
       });
 
-      const visitTrendArray = Object.keys(monthlyData).map(month => ({ month, ...monthlyData[month] }));
+      const visitTrendArray: VisitTrendItem[] = Object.keys(monthlyData).map(month => {
+        const [monthName, year] = month.split(' ');
+        return {
+          month,
+          visits: monthlyData[month].visits,
+          orders: monthlyData[month].orders
+        };
+      });
+
       // Sort the months chronologically
-      visitTrendArray.sort((a, b) => new Date(`1 ${a.month}`).getTime() - new Date(`1 ${b.month}`).getTime());
+      visitTrendArray.sort((a, b) => {
+        const [aMonth, aYear] = a.month.split(' ');
+        const [bMonth, bYear] = b.month.split(' ');
+        const monthMap: { [key: string]: number } = {
+          'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+          'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+        };
+        const aDate = new Date(parseInt(aYear), monthMap[aMonth as keyof typeof monthMap], 1);
+        const bDate = new Date(parseInt(bYear), monthMap[bMonth as keyof typeof monthMap], 1);
+        return aDate.getTime() - bDate.getTime();
+      });
       setVisitTrend(visitTrendArray);
 
 
@@ -100,9 +197,41 @@ export function AdminDashboard() {
         .eq('role', 'mr');
       if (mrsDataError) throw mrsDataError;
 
-      // This part would require complex joins and aggregations in SQL or significant data processing here.
-      // For simplicity, I'll just list the MRs fetched. Real aggregation would be needed.
-      setTopMRs(mrsData?.map(mr => ({ name: mr.name, visits: 0, orderValue: 0 })) || []); // Placeholders
+      // Fetch visits and orders for all MRs
+      const { data: mrVisitsData, error: mrVisitsError } = await supabase
+        .from('visits')
+        .select(`
+          id,
+          mr_id,
+          visit_orders (
+            quantity,
+            price
+          )
+        `)
+        .eq('status', 'approved');
+
+      if (mrVisitsError) throw mrVisitsError;
+
+      // Calculate visits and order values for each MR
+      const mrPerformance: MRPerformance[] = mrsData?.map(mr => {
+        const mrVisits: Visit[] = mrVisitsData?.filter(visit => visit.mr_id === mr.id) || [];
+        const totalOrderValue = mrVisits.reduce((sum, visit) => {
+          const visitValue = visit.visit_orders?.reduce((orderSum, order) => 
+            orderSum + (order.quantity * order.price), 0) || 0;
+          return sum + visitValue;
+        }, 0);
+
+        return {
+          name: mr.name,
+          visits: mrVisits.length,
+          orderValue: totalOrderValue
+        };
+      }) || [];
+
+      // Sort MRs by order value in descending order
+      mrPerformance.sort((a, b) => b.orderValue - a.orderValue);
+
+      setTopMRs(mrPerformance);
 
       // Fetch pending visits with MR information
       const { data: pendingVisitsData, error: pendingVisitsError } = await supabase
@@ -118,7 +247,7 @@ export function AdminDashboard() {
       if (pendingVisitsError) throw pendingVisitsError;
 
       // Get the MR names in a separate query
-      const mrIds = pendingVisitsData?.map(visit => visit.mr_id) || [];
+      const mrIds = (pendingVisitsData as unknown as PendingVisitData[])?.map(visit => visit.mr_id) || [];
       const { data: mrData, error: mrError } = await supabase
         .from('profiles')
         .select('id, name')
@@ -127,13 +256,13 @@ export function AdminDashboard() {
       if (mrError) throw mrError;
 
       // Create a map of MR IDs to names
-      const mrMap = new Map(mrData?.map(mr => [mr.id, mr.name]) || []);
+      const mrMap = new Map((mrData as unknown as MRProfile[])?.map(mr => [mr.id, mr.name]) || []);
 
       // Format pending visits data
-      const formattedPendingVisits = pendingVisitsData?.map(visit => ({
+      const formattedPendingVisits: PendingApproval[] = (pendingVisitsData as unknown as PendingVisitData[])?.map(visit => ({
         id: visit.id,
         name: mrMap.get(visit.mr_id) || 'Unknown MR',
-        type: 'Visit' as const,
+        type: 'Visit',
         date: new Date(visit.date).toLocaleDateString(),
         doctorName: visit.doctors?.name
       })) || [];
@@ -141,8 +270,9 @@ export function AdminDashboard() {
       // Update the pendingApprovals state
       setPendingApprovals(formattedPendingVisits);
 
-    } catch (error: any) {
-      setError(error.message);
+    } catch (error: unknown) {
+      const supabaseError = error as SupabaseError;
+      setError(supabaseError.message);
       console.error("Error fetching admin dashboard data:", error);
     } finally {
       setLoading(false);

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
@@ -59,23 +58,93 @@ export function AuthForm() {
     setIsLoading(true);
     
     try {
-      // This will be replaced with Supabase auth
-      console.log("Login data:", data);
-      
-      // Mock login for now
-      setTimeout(() => {
-        if (data.email === "admin@example.com") {
-          localStorage.setItem("user", JSON.stringify({ role: "admin", name: "Admin User" }));
-          navigate("/admin/dashboard");
-        } else {
-          localStorage.setItem("user", JSON.stringify({ role: "mr", name: "Medical Rep" }));
-          navigate("/mr/dashboard");
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
+      });
+
+      if (authError) {
+        throw authError;
+      }
+
+      if (authData.user) {
+        // Get the user's profile to determine their role
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", authData.user.id)
+          .single();
+
+        if (profileError) {
+          // If profile doesn't exist, create one
+          const { data: newProfile, error: createError } = await supabase
+            .from("profiles")
+            .insert({
+              id: authData.user.id,
+              email: authData.user.email,
+              name: authData.user.user_metadata?.full_name || authData.user.email?.split('@')[0] || 'User',
+              role: 'mr', // Default role
+              status: 'pending' // Default status
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            throw createError;
+          }
+
+          if (newProfile) {
+            if (newProfile.status === "pending") {
+              toast.error("Your account is pending approval. Please wait for admin approval.");
+              return;
+            }
+
+            // Store user data in localStorage
+            localStorage.setItem("user", JSON.stringify({
+              id: authData.user.id,
+              email: authData.user.email,
+              name: newProfile.name,
+              role: newProfile.role,
+            }));
+
+            // Navigate based on role
+            if (newProfile.role === "admin") {
+              navigate("/admin/dashboard");
+            } else {
+              navigate("/mr/dashboard");
+            }
+          }
+        } else if (profile) {
+          if (profile.status === "pending") {
+            toast.error("Your account is pending approval. Please wait for admin approval.");
+            return;
+          }
+
+          // Store user data in localStorage
+          localStorage.setItem("user", JSON.stringify({
+            id: authData.user.id,
+            email: authData.user.email,
+            name: profile.name,
+            role: profile.role,
+          }));
+
+          // Navigate based on role
+          if (profile.role === "admin") {
+            navigate("/admin/dashboard");
+          } else {
+            navigate("/mr/dashboard");
+          }
         }
+        
         toast.success("Login successful");
-      }, 1000);
-    } catch (error) {
+      }
+    } catch (error: unknown) {
       console.error("Login error:", error);
-      toast.error("Failed to login. Please check your credentials.");
+      if (error instanceof Error) {
+        toast.error(error.message || "Failed to login. Please check your credentials.");
+      } else {
+        toast.error("Failed to login. Please check your credentials.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -85,6 +154,9 @@ export function AuthForm() {
     setIsLoading(true);
     
     try {
+      console.log("Attempting to register with Supabase...");
+      console.log("Supabase URL:", supabase.supabaseUrl);
+      
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -97,8 +169,13 @@ export function AuthForm() {
         }
       });
       
-      if (authError) throw authError;
-
+      if (authError) {
+        console.error("Supabase auth error:", authError);
+        throw authError;
+      }
+      
+      console.log("Auth data:", authData);
+      
       // Explicitly update the profile to set the role and status
       if (authData.user) {
         const { error: updateError } = await supabase
@@ -198,7 +275,7 @@ export function AuthForm() {
                   <FormItem>
                     <FormLabel>Full Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="John Doe" {...field} />
+                      <Input placeholder="Soham B" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

@@ -295,7 +295,115 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
       <h1 className="text-2xl font-bold mb-6">{isAdmin ? 'Admin Visit Reports' : 'My Visit Reports'}</h1>
 
       {/* Filter Section */}
-      {!isAdmin && (
+      {isAdmin ? (
+        <div className="mb-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* MR Filter */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">MR</label>
+              <Select value={selectedMr} onValueChange={setSelectedMr}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select MR" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All MRs</SelectItem>
+                  {mrOptions.map((mr) => (
+                    <SelectItem key={mr.value} value={mr.label}>
+                      {mr.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Doctor Filter */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Doctor</label>
+              <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Doctor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Doctors</SelectItem>
+                  {doctorOptions.map((doc) => (
+                    <SelectItem key={doc.value} value={doc.label}>
+                      {doc.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Medicine Filter */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Medicine</label>
+              <Select value={selectedMedicine} onValueChange={setSelectedMedicine}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Medicine" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Medicines</SelectItem>
+                  {medicineOptions.map((med) => (
+                    <SelectItem key={med.value} value={med.label}>
+                      {med.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Date Range Filter */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Date Range</label>
+              <div className="flex gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {startDate ? format(startDate, "PPP") : "Start Date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={startDate}
+                      onSelect={setStartDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {endDate ? format(endDate, "PPP") : "End Date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={endDate}
+                      onSelect={setEndDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={resetAdminFilters}>
+              Reset Filters
+            </Button>
+          </div>
+        </div>
+      ) : (
         <div className="mb-4">
           <Input
             type="search"
@@ -316,6 +424,7 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
         <Table>
           <TableHeader>
             <TableRow>
+              {isAdmin && <TableHead>MR Name</TableHead>}
               <TableHead>Date</TableHead>
               <TableHead>Doctor</TableHead>
               <TableHead>Medicine</TableHead>
@@ -328,6 +437,7 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
             {filteredData.length > 0 ? (
               filteredData.map((entry) => (
                 <TableRow key={entry.id}>
+                  {isAdmin && <TableCell>{entry.mrName}</TableCell>}
                   <TableCell>{format(parseISO(entry.date), "MMM d, yyyy")}</TableCell>
                   <TableCell>{entry.doctor}</TableCell>
                   <TableCell>{entry.medicine}</TableCell>
@@ -342,7 +452,7 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="text-center">
+                <TableCell colSpan={isAdmin ? 7 : 6} className="text-center">
                   {searchTerm ? 'No reports match your search.' : 'No reports found.'}
                 </TableCell>
               </TableRow>

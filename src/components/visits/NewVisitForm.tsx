@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react"; // Import useEffect
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
+import { useUser } from "@/context/UserContext"; // Import useUser hook
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
@@ -40,8 +41,8 @@ import {
 import { CalendarIcon, PlusIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client"; // Import Supabase client
-import { Medicine, Doctor } from "@/types"; // Assuming Medicine type is in @/types
+import { supabase } from "@/integrations/supabase/client";
+import { Medicine, Doctor } from "@/types";
 
 // Define schema for visit form
 const visitSchema = z.object({
@@ -63,9 +64,10 @@ type VisitValues = z.infer<typeof visitSchema>;
 type OrderValues = z.infer<typeof orderSchema>;
 
 export function NewVisitForm() {
+  const { user } = useUser(); // Get user from context
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
-  const [isFetchingMedicines, setIsFetchingMedicines] = useState(true); // State for medicine loading
+  const [isFetchingMedicines, setIsFetchingMedicines] = useState(true);
   const [medicines, setMedicines] = useState<Medicine[]>([]); // State for fetched medicines
   const [orders, setOrders] = useState<any[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]); // State for fetched doctors
@@ -134,7 +136,8 @@ export function NewVisitForm() {
         visitForm.setValue("hospital", selectedDoctor.hospital);
       }
     }
-  }, [visitForm.watch("doctorId"), doctors]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visitForm.watch("doctorId"), doctors, visitForm.setValue]);
 
 
   // Order form
@@ -176,8 +179,17 @@ export function NewVisitForm() {
   // Calculate total order value
   const totalOrderValue = orders.reduce((sum, order) => sum + order.total, 0);
 
+  // Determine if the user is an inactive MR
+  const isInactiveMr = user?.role === 'mr' && user?.status === 'inactive';
+
   // Submit the visit with orders
   const onSubmit = async (data: VisitValues) => {
+    // Prevent submission if MR is inactive
+    if (isInactiveMr) {
+      toast.error("Inactive users cannot log new visits.");
+      return;
+    }
+
     if (orders.length === 0) {
       toast.error("Please add at least one order");
       return;
@@ -185,11 +197,11 @@ export function NewVisitForm() {
 
     setIsLoading(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
+    // Use user ID from context if available
     const mrId = user?.id;
 
     if (!mrId) {
-      toast.error("User not logged in.");
+      toast.error("User ID not found. Please log in again.");
       setIsLoading(false);
       return;
     }
@@ -251,6 +263,7 @@ export function NewVisitForm() {
           <h2 className="text-xl font-semibold mb-4">Visit Details</h2>
           <Form {...visitForm}>
             <form className="space-y-6">
+              <fieldset disabled={isInactiveMr} className="space-y-6"> {/* Disable fields if inactive */}
               <FormField
                 control={visitForm.control}
                 name="doctorId"
@@ -353,12 +366,13 @@ export function NewVisitForm() {
                         placeholder="Additional notes or observations (optional)"
                         className="min-h-[100px]"
                         {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </fieldset>
             </form>
           </Form>
         </div>
@@ -371,7 +385,7 @@ export function NewVisitForm() {
               onSubmit={orderForm.handleSubmit(addOrder)}
               className="space-y-6"
             >
-              <div className="flex gap-4">
+              <fieldset disabled={isInactiveMr} className="flex gap-4"> {/* Disable fields if inactive */}
                 <div className="flex-grow">
                   <FormField
                     control={orderForm.control}
@@ -431,7 +445,7 @@ export function NewVisitForm() {
                     <PlusIcon className="h-4 w-4" />
                   </Button>
                 </div>
-              </div>
+              </fieldset>
             </form>
           </Form>
 
@@ -504,9 +518,9 @@ export function NewVisitForm() {
         </Button>
         <Button
           onClick={visitForm.handleSubmit(onSubmit)}
-          disabled={isLoading || orders.length === 0}
+          disabled={isLoading || orders.length === 0 || isInactiveMr} // Disable if inactive MR
         >
-          {isLoading ? "Submitting..." : "Submit Visit"}
+          {isLoading ? "Submitting..." : isInactiveMr ? "Inactive User" : "Submit Visit"} {/* Change button text if inactive */}
         </Button>
       </div>
     </div>

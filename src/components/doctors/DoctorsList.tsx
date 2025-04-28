@@ -1,8 +1,17 @@
 
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom"; // Re-added useNavigate
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label"; // Added
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"; // Added
 import {
   Table,
   TableBody,
@@ -11,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { PlusIcon, Search } from "lucide-react";
+import { PlusIcon, Search, UserPlus } from "lucide-react"; // Added UserPlus
 import { Doctor } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -20,7 +29,18 @@ export function DoctorsList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // Re-added navigate initialization
+  const [isAddDoctorDialogOpen, setIsAddDoctorDialogOpen] = useState(false); // Added
+  const [isSubmitting, setIsSubmitting] = useState(false); // Added
+  const [newDoctor, setNewDoctor] = useState({ // Added
+    name: "",
+    specialty: "",
+    hospital: "",
+    city: "",
+    address: "",
+    email: "",
+    phone: "",
+  });
 
   useEffect(() => {
     fetchDoctors();
@@ -46,6 +66,75 @@ export function DoctorsList() {
     }
   };
 
+  // Added handleAddDoctor function (adapted from Admin version)
+  const handleAddDoctor = async () => {
+    try {
+      setIsSubmitting(true);
+      
+      // Validate required fields
+      if (!newDoctor.name || !newDoctor.specialty || !newDoctor.hospital || !newDoctor.address) {
+        toast.error("Please fill in all required fields (Name, Specialty, Hospital, Address)");
+        setIsSubmitting(false); // Ensure button is re-enabled on validation error
+        return;
+      }
+      
+      // Get the current user's ID
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error("You must be logged in to add a doctor");
+      }
+      
+      // Create full address
+      const fullAddress = newDoctor.city 
+        ? `${newDoctor.address}, ${newDoctor.city}`
+        : newDoctor.address;
+      
+      // Add the doctor to the database
+      const { data, error } = await supabase
+        .from("doctors")
+        .insert({
+          name: newDoctor.name,
+          specialization: newDoctor.specialty,
+          hospital: newDoctor.hospital,
+          address: fullAddress,
+          email: newDoctor.email || null,
+          phone: newDoctor.phone || null,
+          added_by: user.id,
+          is_verified: false // MRs add doctors as unverified
+        })
+        .select(); // Select the newly inserted row
+        
+      if (error) throw error;
+      
+      if (data && data[0]) {
+        // Add the new doctor to the state
+        setDoctors([...doctors, data[0]]);
+        
+        toast.success("Doctor added successfully. Pending verification.");
+        setIsAddDoctorDialogOpen(false);
+        
+        // Reset form
+        setNewDoctor({
+          name: "",
+          specialty: "",
+          hospital: "",
+          city: "",
+          address: "",
+          email: "",
+          phone: "",
+        });
+      } else {
+         throw new Error("Failed to add doctor or retrieve added data.");
+      }
+    } catch (error: any) {
+      console.error("Error adding doctor:", error);
+      toast.error(error.message || "Failed to add doctor");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Filter doctors based on search term
   const filteredDoctors = doctors.filter(
     (doctor) =>
@@ -58,8 +147,9 @@ export function DoctorsList() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Doctors</h2>
-        <Button onClick={() => navigate("/mr/doctors/new")}>
-          <PlusIcon className="mr-2 h-4 w-4" /> Add Doctor
+        {/* Updated Button to open dialog */}
+        <Button onClick={() => setIsAddDoctorDialogOpen(true)}>
+          <UserPlus className="mr-2 h-4 w-4" /> Add Doctor 
         </Button>
       </div>
       
@@ -128,6 +218,101 @@ export function DoctorsList() {
           </Table>
         </div>
       )}
+
+      {/* Add Doctor Dialog (Copied and adapted from Admin version) */}
+      <Dialog open={isAddDoctorDialogOpen} onOpenChange={setIsAddDoctorDialogOpen}>
+        <DialogContent className="sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle>Add New Doctor</DialogTitle>
+            <DialogDescription>
+              Add a new doctor to the system. The doctor will require admin verification.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="mr-name">Full Name*</Label>
+                <Input
+                  id="mr-name" // Use unique ID if needed
+                  value={newDoctor.name}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, name: e.target.value })}
+                  placeholder="Dr. Soham B"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="mr-specialty">Specialty*</Label>
+                <Input
+                  id="mr-specialty"
+                  value={newDoctor.specialty}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, specialty: e.target.value })}
+                  placeholder="Cardiology"
+                />
+              </div>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="mr-hospital">Hospital / Clinic*</Label>
+              <Input
+                id="mr-hospital"
+                value={newDoctor.hospital}
+                onChange={(e) => setNewDoctor({ ...newDoctor, hospital: e.target.value })}
+                placeholder="City General Hospital"
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="mr-address">Address*</Label>
+                <Input
+                  id="mr-address"
+                  value={newDoctor.address}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, address: e.target.value })}
+                  placeholder="123 Medical Ave"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="mr-city">City</Label>
+                <Input
+                  id="mr-city"
+                  value={newDoctor.city}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, city: e.target.value })}
+                  placeholder="Health City"
+                />
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="mr-email">Email</Label>
+                <Input
+                  id="mr-email"
+                  type="email"
+                  value={newDoctor.email}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, email: e.target.value })}
+                  placeholder="soham.abc@hospital.com"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="mr-phone">Phone</Label>
+                <Input
+                  id="mr-phone"
+                  value={newDoctor.phone}
+                  onChange={(e) => setNewDoctor({ ...newDoctor, phone: e.target.value })}
+                  placeholder="555-123-4567"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddDoctorDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddDoctor} disabled={isSubmitting}>
+              {isSubmitting ? "Adding..." : "Add Doctor"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

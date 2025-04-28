@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,28 +11,104 @@ const Index = () => {
   const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
+    let mounted = true;
+    
     const checkUserStatus = async () => {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-      if (sessionError || !session) {
-        setIsLoading(false);
-        return;
+        if (sessionError || !session) {
+          if (mounted) {
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        // First try to get the profile
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", session.user.id)
+          .single();
+
+        // If profile doesn't exist, create one
+        if (profileError?.code === 'PGRST116' || !profile) {
+          // Check if a profile with this email already exists
+          const { data: existingProfile, error: checkError } = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("email", session.user.email)
+            .single();
+
+          if (checkError && checkError.code !== 'PGRST116') {
+            console.error("Error checking existing profile:", checkError);
+            if (mounted) {
+              setIsLoading(false);
+            }
+            return;
+          }
+
+          if (existingProfile) {
+            // If profile exists with same email but different ID, update the ID
+            const { error: updateError } = await supabase
+              .from("profiles")
+              .update({ id: session.user.id })
+              .eq("id", existingProfile.id);
+
+            if (updateError) {
+              console.error("Error updating profile ID:", updateError);
+              if (mounted) {
+                setIsLoading(false);
+              }
+              return;
+            }
+          } else {
+            // Create new profile
+            const { data: newProfile, error: createError } = await supabase
+              .from("profiles")
+              .insert({
+                id: session.user.id,
+                email: session.user.email,
+                name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+                role: 'mr', // Default role
+                status: 'pending' // Default status
+              })
+              .select()
+              .single();
+
+            if (createError) {
+              console.error("Error creating profile:", createError);
+              if (mounted) {
+                setIsLoading(false);
+              }
+              return;
+            }
+
+            if (mounted) {
+              setUser(newProfile);
+            }
+          }
+        } else if (profileError) {
+          console.error("Error fetching profile:", profileError);
+          if (mounted) {
+            setIsLoading(false);
+          }
+          return;
+        } else {
+          if (mounted) {
+            setUser(profile);
+          }
+        }
+
+        if (mounted) {
+          setIsLoading(false);
+        }
+      } catch (error) {
+        console.error("Error in checkUserStatus:", error);
+        if (mounted) {
+          setIsLoading(false);
+        }
       }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-
-      if (profileError || !profile) {
-        console.error("Error fetching profile:", profileError);
-        setIsLoading(false);
-        return;
-      }
-
-      setUser(profile);
-      setIsLoading(false);
     };
 
     checkUserStatus();
@@ -49,9 +124,9 @@ const Index = () => {
     });
 
     return () => {
+      mounted = false;
       authListener?.subscription.unsubscribe();
     };
-
   }, [navigate]);
 
   if (isLoading) {

@@ -311,7 +311,7 @@ export function DoctorsManagement() {
                   id="name"
                   value={newDoctor.name}
                   onChange={(e) => setNewDoctor({ ...newDoctor, name: e.target.value })}
-                  placeholder="Dr. John Smith"
+                  placeholder="Dr. Soham B"
                 />
               </div>
               <div className="grid gap-2">
@@ -364,7 +364,7 @@ export function DoctorsManagement() {
                   type="email"
                   value={newDoctor.email}
                   onChange={(e) => setNewDoctor({ ...newDoctor, email: e.target.value })}
-                  placeholder="john.smith@hospital.com"
+                  placeholder="soham.abc@hospital.com"
                 />
               </div>
               <div className="grid gap-2">
