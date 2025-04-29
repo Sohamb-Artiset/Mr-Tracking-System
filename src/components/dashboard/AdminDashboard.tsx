@@ -37,7 +37,7 @@ interface VisitTrendItem {
 interface PendingApproval {
   id: string; // Changed to string for UUID
   name: string;
-  type: 'Visit' | 'User';
+  type: 'Visit' | 'User' | 'Doctor'; // Added 'Doctor'
   date?: string;
   doctorName?: string;
   email?: string;
@@ -285,11 +285,23 @@ export function AdminDashboard() {
         email: user.email || 'N/A'
       })) || [];
 
-      // NOTE: Assuming doctors do not have a pending approval status in the 'doctors' table based on the schema.
-      // If doctors require approval, a similar query for the 'doctors' table with a 'status' field would be needed here.
+      // Fetch pending doctors (is_verified is false)
+      const { data: pendingDoctorsData, error: pendingDoctorsError } = await supabase
+        .from('doctors')
+        .select('id, name')
+        .eq('is_verified', false);
+
+      if (pendingDoctorsError) throw pendingDoctorsError;
+
+      // Format pending doctors data
+      const formattedPendingDoctors: PendingApproval[] = (pendingDoctorsData as unknown as Tables<'doctors'>[])?.map(doctor => ({
+        id: doctor.id,
+        name: doctor.name,
+        type: 'Doctor',
+      })) || [];
 
       // Combine all pending approvals
-      const allPendingApprovals = [...formattedPendingVisits, ...formattedPendingUsers];
+      const allPendingApprovals = [...formattedPendingVisits, ...formattedPendingUsers, ...formattedPendingDoctors];
 
       // Update the pendingApprovals state
       setPendingApprovals(allPendingApprovals);
@@ -307,7 +319,7 @@ export function AdminDashboard() {
     fetchData();
   }, []); // Added empty dependency array
 
-  const handleApprove = async (id: string, type: 'Report' | 'Visit' | 'User') => { // Changed id type to string
+  const handleApprove = async (id: string, type: 'Report' | 'Visit' | 'User' | 'Doctor') => { // Added 'Doctor'
     setLoading(true);
     setError(null);
     try {
@@ -315,18 +327,24 @@ export function AdminDashboard() {
         const { error } = await supabase
           .from('reports')
           .update({ status: 'approved' })
-          .eq('id', id); // Removed toString()
+          .eq('id', id);
         if (error) throw error;
       } else if (type === 'Visit') {
         const { error } = await supabase
           .from('visits')
           .update({ status: 'approved' })
-          .eq('id', id); // Removed toString()
+          .eq('id', id);
         if (error) throw error;
       } else if (type === 'User') {
         const { error } = await supabase
           .from('profiles')
-          .update({ status: 'active' }) // Changed status to 'active'
+          .update({ status: 'active' })
+          .eq('id', id);
+        if (error) throw error;
+      } else if (type === 'Doctor') { // Added Doctor approval logic
+        const { error } = await supabase
+          .from('doctors')
+          .update({ is_verified: true })
           .eq('id', id);
         if (error) throw error;
       }
@@ -338,7 +356,7 @@ export function AdminDashboard() {
     }
   };
 
-  const handleReject = async (id: string, type: 'Report' | 'Visit' | 'User') => {
+  const handleReject = async (id: string, type: 'Report' | 'Visit' | 'User' | 'Doctor') => { // Added 'Doctor'
     setLoading(true);
     setError(null);
     try {
@@ -357,7 +375,13 @@ export function AdminDashboard() {
       } else if (type === 'User') {
         const { error } = await supabase
           .from('profiles')
-          .update({ status: 'inactive' }) // Changed status to 'inactive'
+          .update({ status: 'inactive' })
+          .eq('id', id);
+        if (error) throw error;
+      } else if (type === 'Doctor') { // Added Doctor rejection logic
+        const { error } = await supabase
+          .from('doctors')
+          .delete() // Assuming rejection means deleting the unverified doctor entry
           .eq('id', id);
         if (error) throw error;
       }
