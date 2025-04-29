@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +52,8 @@ export function DoctorsManagement() {
     email: "",
     phone: "",
   });
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -63,14 +64,14 @@ export function DoctorsManagement() {
   const fetchDoctors = async () => {
     try {
       setIsLoading(true);
-      
+
       // Fetch doctors from Supabase
       const { data, error } = await supabase
         .from("doctors")
         .select("*");
-        
+
       if (error) throw error;
-      
+
       setDoctors(data || []);
     } catch (error) {
       console.error("Error fetching doctors:", error);
@@ -94,15 +95,15 @@ export function DoctorsManagement() {
         .from("doctors")
         .update({ is_verified: true })
         .eq("id", id);
-        
+
       if (error) throw error;
-      
+
       setDoctors(
         doctors.map((doctor) =>
           doctor.id === id ? { ...doctor, is_verified: true } : doctor
         )
       );
-      
+
       toast.success("Doctor verified successfully");
     } catch (error: any) {
       console.error("Error verifying doctor:", error);
@@ -116,9 +117,9 @@ export function DoctorsManagement() {
         .from("doctors")
         .delete()
         .eq("id", id);
-        
+
       if (error) throw error;
-      
+
       setDoctors(doctors.filter((doctor) => doctor.id !== id));
       toast.success("Doctor deleted successfully");
     } catch (error: any) {
@@ -127,28 +128,74 @@ export function DoctorsManagement() {
     }
   };
 
+  const handleEditDoctor = async () => {
+    if (!editingDoctor) return;
+
+    try {
+      setIsSubmitting(true);
+
+      // Validate required fields
+      if (!editingDoctor.name || !editingDoctor.specialization || !editingDoctor.hospital || !editingDoctor.address) {
+        toast.error("Please fill in all required fields");
+        return;
+      }
+
+      // Update the doctor in the database
+      const { data, error } = await supabase
+        .from("doctors")
+        .update({
+          name: editingDoctor.name,
+          specialization: editingDoctor.specialization,
+          hospital: editingDoctor.hospital,
+          address: editingDoctor.address,
+          email: editingDoctor.email || null,
+          phone: editingDoctor.phone || null,
+        })
+        .eq("id", editingDoctor.id)
+        .select();
+
+      if (error) throw error;
+
+      if (data && data[0]) {
+        // Update the doctor in the state
+        setDoctors(doctors.map(doc => doc.id === data[0].id ? data[0] : doc));
+
+        toast.success("Doctor updated successfully");
+        setIsEditDialogOpen(false);
+        setEditingDoctor(null); // Clear editing state
+      }
+
+    } catch (error: any) {
+      console.error("Error updating doctor:", error);
+      toast.error(error.message || "Failed to update doctor");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+
   const handleAddDoctor = async () => {
     try {
       setIsSubmitting(true);
-      
+
       // Validate required fields
       if (!newDoctor.name || !newDoctor.specialty || !newDoctor.hospital || !newDoctor.address) {
         toast.error("Please fill in all required fields");
         return;
       }
-      
+
       // Get the current user's ID
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         throw new Error("You must be logged in to add a doctor");
       }
-      
+
       // Create full address
-      const fullAddress = newDoctor.city 
+      const fullAddress = newDoctor.city
         ? `${newDoctor.address}, ${newDoctor.city}`
         : newDoctor.address;
-      
+
       // Add the doctor to the database
       const { data, error } = await supabase
         .from("doctors")
@@ -163,16 +210,16 @@ export function DoctorsManagement() {
           is_verified: true // Auto-verify when admin adds
         })
         .select();
-        
+
       if (error) throw error;
-      
+
       if (data && data[0]) {
         // Add the new doctor to the state
         setDoctors([...doctors, data[0]]);
-        
+
         toast.success("Doctor added successfully");
         setIsAddDoctorDialogOpen(false);
-        
+
         // Reset form
         setNewDoctor({
           name: "",
@@ -201,7 +248,7 @@ export function DoctorsManagement() {
           Add Doctor
         </Button>
       </div>
-      
+
       <div className="flex items-center space-x-2">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -214,7 +261,7 @@ export function DoctorsManagement() {
           />
         </div>
       </div>
-      
+
       {isLoading ? (
         <div className="flex justify-center py-8">
           <div className="animate-pulse">Loading doctors...</div>
@@ -265,7 +312,10 @@ export function DoctorsManagement() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => {
+                            setEditingDoctor(doctor);
+                            setIsEditDialogOpen(true);
+                          }}>
                             <Edit className="mr-2 h-4 w-4" />
                             Edit
                           </DropdownMenuItem>
@@ -276,7 +326,7 @@ export function DoctorsManagement() {
                               Verify
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem 
+                          <DropdownMenuItem
                             onClick={() => handleDelete(doctor.id)}
                             className="text-red-600"
                           >
@@ -293,7 +343,7 @@ export function DoctorsManagement() {
           </Table>
         </div>
       )}
-      
+
       {/* Add Doctor Dialog */}
       <Dialog open={isAddDoctorDialogOpen} onOpenChange={setIsAddDoctorDialogOpen}>
         <DialogContent className="sm:max-w-[550px]">
@@ -324,7 +374,7 @@ export function DoctorsManagement() {
                 />
               </div>
             </div>
-            
+
             <div className="grid gap-2">
               <Label htmlFor="hospital">Hospital / Clinic*</Label>
               <Input
@@ -334,7 +384,7 @@ export function DoctorsManagement() {
                 placeholder="City General Hospital"
               />
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="address">Address*</Label>
@@ -355,7 +405,7 @@ export function DoctorsManagement() {
                 />
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
@@ -384,6 +434,92 @@ export function DoctorsManagement() {
             </Button>
             <Button onClick={handleAddDoctor} disabled={isSubmitting}>
               {isSubmitting ? "Adding..." : "Add Doctor"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Doctor Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle>Edit Doctor</DialogTitle>
+            <DialogDescription>
+              Edit the information for this doctor.
+            </DialogDescription>
+          </DialogHeader>
+          {editingDoctor && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-name">Full Name*</Label>
+                  <Input
+                    id="edit-name"
+                    value={editingDoctor.name}
+                    onChange={(e) => setEditingDoctor({ ...editingDoctor, name: e.target.value })}
+                    placeholder="Dr. Soham B"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-specialty">Specialty*</Label>
+                  <Input
+                    id="edit-specialty"
+                    value={editingDoctor.specialization}
+                    onChange={(e) => setEditingDoctor({ ...editingDoctor, specialization: e.target.value })}
+                    placeholder="Cardiology"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="edit-hospital">Hospital / Clinic*</Label>
+                <Input
+                  id="edit-hospital"
+                  value={editingDoctor.hospital}
+                  onChange={(e) => setEditingDoctor({ ...editingDoctor, hospital: e.target.value })}
+                  placeholder="City General Hospital"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="edit-address">Address*</Label>
+                <Input
+                  id="edit-address"
+                  value={editingDoctor.address}
+                  onChange={(e) => setEditingDoctor({ ...editingDoctor, address: e.target.value })}
+                  placeholder="123 Medical Ave"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-email">Email</Label>
+                  <Input
+                    id="edit-email"
+                    type="email"
+                    value={editingDoctor.email || ""}
+                    onChange={(e) => setEditingDoctor({ ...editingDoctor, email: e.target.value })}
+                    placeholder="soham.abc@hospital.com"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-phone">Phone</Label>
+                  <Input
+                    id="edit-phone"
+                    value={editingDoctor.phone || ""}
+                    onChange={(e) => setEditingDoctor({ ...editingDoctor, phone: e.target.value })}
+                    placeholder="555-123-4567"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditDoctor} disabled={isSubmitting}>
+              {isSubmitting ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
