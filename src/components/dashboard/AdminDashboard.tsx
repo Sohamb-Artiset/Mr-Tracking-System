@@ -349,8 +349,9 @@ export function AdminDashboard() {
         if (error) throw error;
       }
       fetchData(); // Refresh data
-    } catch (error: any) {
-      setError(error.message);
+    } catch (error: unknown) { // Changed any to unknown
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setError(errorMessage);
       console.error(`Error approving ${type}:`, error);
       setLoading(false); // Stop loading on error
     }
@@ -386,8 +387,9 @@ export function AdminDashboard() {
         if (error) throw error;
       }
       fetchData(); // Refresh data
-    } catch (error: any) {
-      setError(error.message);
+    } catch (error: unknown) { // Changed any to unknown
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setError(errorMessage);
       console.error(`Error rejecting ${type}:`, error);
       setLoading(false); // Stop loading on error
     }
@@ -480,7 +482,7 @@ export function AdminDashboard() {
             <CardTitle>Top Performing MRs</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="max-h-[150px] overflow-y-scroll scrollbar-hide">
+            <div className="max-h-[150px] overflow-y-scroll no-scrollbar"> {/* Changed scrollbar-hide to no-scrollbar */}
               <div className="space-y-4">
                 {topMRs.map((mr, index) => (
                   <div key={index} className="flex items-center justify-between">
