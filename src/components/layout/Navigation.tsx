@@ -1,4 +1,3 @@
-
 import { 
   CalendarIcon, 
   FileIcon, 
@@ -47,11 +46,6 @@ export function Navigation({ userRole }: NavigationProps) {
       title: "Reports",
       href: "/admin/reports",
       icon: FileIcon,
-    },
-    {
-      title: "Settings",
-      href: "/admin/settings",
-      icon: SettingsIcon,
     },
   ];
 
