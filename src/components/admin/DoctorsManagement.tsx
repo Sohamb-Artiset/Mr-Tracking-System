@@ -54,6 +54,8 @@ export function DoctorsManagement() {
   });
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
+  const [isViewDoctorDialogOpen, setIsViewDoctorDialogOpen] = useState(false); // State for view dialog
+  const [viewingDoctor, setViewingDoctor] = useState<Doctor | null>(null); // State for doctor being viewed
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -105,9 +107,10 @@ export function DoctorsManagement() {
       );
 
       toast.success("Doctor verified successfully");
-    } catch (error: any) {
+    } catch (error: unknown) { // Explicitly type error as unknown
       console.error("Error verifying doctor:", error);
-      toast.error(error.message || "Failed to verify doctor");
+      const errorMessage = error instanceof Error ? error.message : "Failed to verify doctor";
+      toast.error(errorMessage);
     }
   };
 
@@ -122,9 +125,10 @@ export function DoctorsManagement() {
 
       setDoctors(doctors.filter((doctor) => doctor.id !== id));
       toast.success("Doctor deleted successfully");
-    } catch (error: any) {
+    } catch (error: unknown) { // Explicitly type error as unknown
       console.error("Error deleting doctor:", error);
-      toast.error(error.message || "Failed to delete doctor");
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete doctor";
+      toast.error(errorMessage);
     }
   };
 
@@ -165,9 +169,10 @@ export function DoctorsManagement() {
         setEditingDoctor(null); // Clear editing state
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) { // Explicitly type error as unknown
       console.error("Error updating doctor:", error);
-      toast.error(error.message || "Failed to update doctor");
+      const errorMessage = error instanceof Error ? error.message : "Failed to update doctor";
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -231,9 +236,10 @@ export function DoctorsManagement() {
           phone: "",
         });
       }
-    } catch (error: any) {
+    } catch (error: unknown) { // Explicitly type error as unknown
       console.error("Error adding doctor:", error);
-      toast.error(error.message || "Failed to add doctor");
+      const errorMessage = error instanceof Error ? error.message : "Failed to add doctor";
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -289,7 +295,19 @@ export function DoctorsManagement() {
               ) : (
                 filteredDoctors.map((doctor) => (
                   <TableRow key={doctor.id}>
-                    <TableCell className="font-medium">{doctor.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {/* Make name clickable to open view modal */}
+                      <Button
+                        variant="link"
+                        className="p-0 h-auto"
+                        onClick={() => {
+                          setViewingDoctor(doctor);
+                          setIsViewDoctorDialogOpen(true);
+                        }}
+                      >
+                        {doctor.name}
+                      </Button>
+                    </TableCell>
                     <TableCell>{doctor.specialization}</TableCell>
                     <TableCell className="hidden md:table-cell">{doctor.hospital}</TableCell>
                     <TableCell className="hidden md:table-cell">{doctor.address}</TableCell>
@@ -520,6 +538,64 @@ export function DoctorsManagement() {
             </Button>
             <Button onClick={handleEditDoctor} disabled={isSubmitting}>
               {isSubmitting ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Doctor Dialog */}
+      <Dialog open={isViewDoctorDialogOpen} onOpenChange={setIsViewDoctorDialogOpen}>
+        <DialogContent className="sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle>Doctor Details</DialogTitle>
+            <DialogDescription>
+              Viewing information for {viewingDoctor?.name}. Details are read-only.
+            </DialogDescription>
+          </DialogHeader>
+          {viewingDoctor && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Full Name</Label>
+                  <p className="text-sm p-2 border rounded bg-muted">{viewingDoctor.name}</p>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Specialty</Label>
+                  <p className="text-sm p-2 border rounded bg-muted">{viewingDoctor.specialization}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Hospital / Clinic</Label>
+                <p className="text-sm p-2 border rounded bg-muted">{viewingDoctor.hospital}</p>
+              </div>
+
+              <div className="grid gap-2">
+                  <Label>Address</Label>
+                  <p className="text-sm p-2 border rounded bg-muted">{viewingDoctor.address}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Email</Label>
+                  <p className="text-sm p-2 border rounded bg-muted">{viewingDoctor.email || "-"}</p>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Phone</Label>
+                  <p className="text-sm p-2 border rounded bg-muted">{viewingDoctor.phone || "-"}</p>
+                </div>
+              </div>
+               <div className="grid gap-2">
+                  <Label>Status</Label>
+                  <p className={`text-sm p-2 border rounded ${viewingDoctor.is_verified ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                    {viewingDoctor.is_verified ? "Verified" : "Pending Verification"}
+                  </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewDoctorDialogOpen(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
