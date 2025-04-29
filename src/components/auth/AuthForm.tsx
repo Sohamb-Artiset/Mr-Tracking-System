@@ -138,6 +138,12 @@ export function AuthForm() {
             return;
           }
 
+          if (profile.status === "rejected") {
+            toast.error("Your account has been rejected. Please contact the administrator for assistance.");
+            await supabase.auth.signOut();
+            return;
+          }
+
           // Store user data in localStorage
           localStorage.setItem("user", JSON.stringify({
             id: authData.user.id,
@@ -350,4 +356,3 @@ export function AuthForm() {
     </div>
   );
 }
-
