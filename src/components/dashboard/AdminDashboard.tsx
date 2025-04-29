@@ -35,11 +35,12 @@ interface VisitTrendItem {
 }
 
 interface PendingApproval {
-  id: number;
+  id: string; // Changed to string for UUID
   name: string;
-  type: 'Visit';
-  date: string;
+  type: 'Visit' | 'User';
+  date?: string;
   doctorName?: string;
+  email?: string;
 }
 
 interface PendingReport {
@@ -260,15 +261,38 @@ export function AdminDashboard() {
 
       // Format pending visits data
       const formattedPendingVisits: PendingApproval[] = (pendingVisitsData as unknown as PendingVisitData[])?.map(visit => ({
-        id: parseInt(visit.id),
+        id: visit.id, // Removed parseInt
         name: mrMap.get(visit.mr_id) || 'Unknown MR',
         type: 'Visit',
         date: new Date(visit.date).toLocaleDateString(),
         doctorName: visit.doctors?.name
       })) || [];
 
+      // Fetch pending users
+      const { data: pendingUsersData, error: pendingUsersError } = await supabase
+        .from('profiles')
+        .select('id, name, email')
+        .eq('role', 'mr') // Assuming only MRs need user approval
+        .eq('status', 'pending');
+
+      if (pendingUsersError) throw pendingUsersError;
+
+      // Format pending users data
+      const formattedPendingUsers: PendingApproval[] = (pendingUsersData as unknown as Tables<'profiles'>[])?.map(user => ({ // Corrected type assertion
+        id: user.id,
+        name: user.name || 'Unknown User',
+        type: 'User',
+        email: user.email || 'N/A'
+      })) || [];
+
+      // NOTE: Assuming doctors do not have a pending approval status in the 'doctors' table based on the schema.
+      // If doctors require approval, a similar query for the 'doctors' table with a 'status' field would be needed here.
+
+      // Combine all pending approvals
+      const allPendingApprovals = [...formattedPendingVisits, ...formattedPendingUsers];
+
       // Update the pendingApprovals state
-      setPendingApprovals(formattedPendingVisits);
+      setPendingApprovals(allPendingApprovals);
 
     } catch (error: unknown) {
       const supabaseError = error as SupabaseError;
@@ -283,7 +307,7 @@ export function AdminDashboard() {
     fetchData();
   }, []); // Added empty dependency array
 
-  const handleApprove = async (id: number, type: 'Report' | 'Visit') => {
+  const handleApprove = async (id: string, type: 'Report' | 'Visit' | 'User') => { // Changed id type to string
     setLoading(true);
     setError(null);
     try {
@@ -291,13 +315,19 @@ export function AdminDashboard() {
         const { error } = await supabase
           .from('reports')
           .update({ status: 'approved' })
-          .eq('id', id.toString());
+          .eq('id', id); // Removed toString()
         if (error) throw error;
       } else if (type === 'Visit') {
         const { error } = await supabase
           .from('visits')
           .update({ status: 'approved' })
-          .eq('id', id.toString());
+          .eq('id', id); // Removed toString()
+        if (error) throw error;
+      } else if (type === 'User') {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ status: 'active' }) // Changed status to 'active'
+          .eq('id', id);
         if (error) throw error;
       }
       fetchData(); // Refresh data
@@ -308,7 +338,7 @@ export function AdminDashboard() {
     }
   };
 
-  const handleReject = async (id: number, type: 'Report' | 'Visit') => {
+  const handleReject = async (id: string, type: 'Report' | 'Visit' | 'User') => {
     setLoading(true);
     setError(null);
     try {
@@ -316,13 +346,19 @@ export function AdminDashboard() {
         const { error } = await supabase
           .from('reports')
           .update({ status: 'rejected' })
-          .eq('id', id.toString());
+          .eq('id', id);
         if (error) throw error;
       } else if (type === 'Visit') {
         const { error } = await supabase
           .from('visits')
           .update({ status: 'rejected' })
-          .eq('id', id.toString());
+          .eq('id', id);
+        if (error) throw error;
+      } else if (type === 'User') {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ status: 'inactive' }) // Changed status to 'inactive'
+          .eq('id', id);
         if (error) throw error;
       }
       fetchData(); // Refresh data
@@ -454,7 +490,12 @@ export function AdminDashboard() {
                 <div key={index} className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">{item.type} • {item.date}</p>
+                    {item.type === 'Visit' && (
+                      <p className="text-xs text-muted-foreground">{item.type} • {item.date} • {item.doctorName}</p>
+                    )}
+                    {item.type === 'User' && (
+                      <p className="text-xs text-muted-foreground">{item.type} • {item.email}</p>
+                    )}
                   </div>
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => handleReject(item.id, item.type)}>Reject</Button>
