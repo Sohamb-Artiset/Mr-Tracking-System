@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { User } from "@/types";
@@ -495,6 +494,7 @@ export function UsersManagement() {
                               </>
                             )}
                             {/* Delete Button - always show for MRs */}
+                            {/*
                             <Button
                               variant="destructive"
                               size="sm"
@@ -506,6 +506,7 @@ export function UsersManagement() {
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
+                            */}
                           </div>
                         </TableCell>
                       </TableRow>
