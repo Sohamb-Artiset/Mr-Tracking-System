@@ -247,15 +247,6 @@ export function MRDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.monthlyVisits ?? 0}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats?.visitTarget ?? 0} visits target | {stats?.visitCompletion ?? 0}% complete
-            </p>
-            <div className="mt-2 h-2 w-full rounded-full bg-secondary/20">
-              <div
-                className="h-2 rounded-full bg-secondary"
-                style={{ width: `${stats?.visitCompletion ?? 0}%` }}
-              />
-            </div>
           </CardContent>
         </Card>
 
@@ -266,15 +257,6 @@ export function MRDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">₹{stats?.monthlyOrderValue.toLocaleString() ?? 0}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats?.orderTarget ?? 0} target | {stats?.orderCompletion ?? 0}% complete
-            </p>
-            <div className="mt-2 h-2 w-full rounded-full bg-primary/20">
-              <div
-                className="h-2 rounded-full bg-primary"
-                style={{ width: `${stats?.orderCompletion ?? 0}%` }}
-              />
-            </div>
           </CardContent>
         </Card>
 
@@ -285,15 +267,6 @@ export function MRDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats?.uniqueDoctors ?? 0}</div>
-            <p className="text-xs text-muted-foreground">
-              Out of {stats?.totalDoctorsInArea ?? 0} in your area
-            </p>
-            <div className="mt-2 h-2 w-full rounded-full bg-medical-teal/20">
-              <div
-                className="h-2 rounded-full bg-medical-teal"
-                style={{ width: `${((stats?.uniqueDoctors ?? 0) / (stats?.totalDoctorsInArea || 1)) * 10}%` }}
-              />
-            </div>
           </CardContent>
         </Card>
       </div>
