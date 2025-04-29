@@ -16,6 +16,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address" }),
@@ -33,6 +40,7 @@ type RegisterValues = z.infer<typeof registerSchema>;
 
 export function AuthForm() {
   const [isLoading, setIsLoading] = useState(false);
+  const [isInactiveMrDialogOpen, setIsInactiveMrDialogOpen] = useState(false); // State for the inactive MR dialog
   const navigate = useNavigate();
 
   // Login form
@@ -115,8 +123,18 @@ export function AuthForm() {
             }
           }
         } else if (profile) {
+          // Check for inactive MR status
+          if (profile.role === 'mr' && profile.status === 'inactive') {
+            setIsInactiveMrDialogOpen(true); // Open the dialog
+            // Log out the user from Supabase session
+            await supabase.auth.signOut();
+            return; // Prevent further execution
+          }
+
           if (profile.status === "pending") {
             toast.error("Your account is pending approval. Please wait for admin approval.");
+            // Optionally log out pending users as well
+            await supabase.auth.signOut();
             return;
           }
 
@@ -154,8 +172,7 @@ export function AuthForm() {
     setIsLoading(true);
     
     try {
-      console.log("Attempting to register with Supabase...");
-      console.log("Supabase URL:", supabase.supabaseUrl);
+      // Removed problematic console.logs
       
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: data.email,
@@ -174,7 +191,7 @@ export function AuthForm() {
         throw authError;
       }
       
-      console.log("Auth data:", authData);
+      // Removed problematic console.log
       
       // Explicitly update the profile to set the role and status
       if (authData.user) {
@@ -256,11 +273,7 @@ export function AuthForm() {
                 {isLoading ? "Signing in..." : "Sign In"}
               </Button>
               
-              <div className="text-center text-sm text-muted-foreground">
-                <p>Demo Accounts:</p>
-                <p>admin@example.com / password</p>
-                <p>mr@example.com / password</p>
-              </div>
+              
             </form>
           </Form>
         </TabsContent>
@@ -322,6 +335,19 @@ export function AuthForm() {
           </Form>
         </TabsContent>
       </Tabs>
+
+      {/* Inactive MR Dialog */}
+      <Dialog open={isInactiveMrDialogOpen} onOpenChange={setIsInactiveMrDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Account Inactive</DialogTitle>
+            <DialogDescription>
+              Your account is currently inactive. Please contact the administrator for assistance.
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
