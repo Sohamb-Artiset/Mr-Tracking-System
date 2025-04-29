@@ -35,7 +35,7 @@ interface VisitTrendItem {
 }
 
 interface PendingApproval {
-  id: string;
+  id: number;
   name: string;
   type: 'Visit';
   date: string;
@@ -260,7 +260,7 @@ export function AdminDashboard() {
 
       // Format pending visits data
       const formattedPendingVisits: PendingApproval[] = (pendingVisitsData as unknown as PendingVisitData[])?.map(visit => ({
-        id: visit.id,
+        id: parseInt(visit.id),
         name: mrMap.get(visit.mr_id) || 'Unknown MR',
         type: 'Visit',
         date: new Date(visit.date).toLocaleDateString(),
@@ -358,9 +358,6 @@ export function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalMRs}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.mrIncrease > 0 ? "+" : ""}{stats.mrIncrease}% from last month
-            </p>
           </CardContent>
         </Card>
         
@@ -371,9 +368,6 @@ export function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalDoctors}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.doctorIncrease > 0 ? "+" : ""}{stats.doctorIncrease}% from last month
-            </p>
           </CardContent>
         </Card>
         
@@ -384,9 +378,6 @@ export function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.totalVisits}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.visitIncrease > 0 ? "+" : ""}{stats.visitIncrease}% from last month
-            </p>
           </CardContent>
         </Card>
         
@@ -397,9 +388,6 @@ export function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">₹{stats.totalOrderValue.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.orderIncrease > 0 ? "+" : ""}{stats.orderIncrease}% from last month
-            </p>
           </CardContent>
         </Card>
       </div>
@@ -432,23 +420,25 @@ export function AdminDashboard() {
             <CardTitle>Top Performing MRs</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {topMRs.map((mr, index) => (
-                <div key={index} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Avatar>
-                      <AvatarFallback className="bg-primary text-primary-foreground">
-                        {mr.name.split(" ").map(n => n[0]).join("")}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium">{mr.name}</p>
-                      <p className="text-xs text-muted-foreground">{mr.visits} visits</p>
+            <div className="max-h-[150px] overflow-y-scroll scrollbar-hide">
+              <div className="space-y-4">
+                {topMRs.map((mr, index) => (
+                  <div key={index} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Avatar>
+                        <AvatarFallback className="bg-primary text-primary-foreground">
+                          {mr.name.split(" ").map(n => n[0]).join("")}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium">{mr.name}</p>
+                        <p className="text-xs text-muted-foreground">{mr.visits} visits</p>
+                      </div>
                     </div>
+                    <div className="text-sm font-medium">₹{mr.orderValue.toLocaleString()}</div>
                   </div>
-                  <div className="text-sm font-medium">₹{mr.orderValue.toLocaleString()}</div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </CardContent>
         </Card>
