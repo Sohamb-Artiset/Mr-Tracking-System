@@ -41,7 +41,6 @@ interface ProfileSettingsFormProps {
 const profileFormSchema = z.object({
     name: z.string().min(1, { message: "Name cannot be empty." }).max(100).optional().or(z.literal('')),
     region: z.string().max(50).optional().nullable(), // Allow region update if desired
-    status: z.enum(['active', 'inactive'], { required_error: "Status is required." }), // Add status field validation
 });
 
 // Infer the type from the Zod schema
@@ -55,7 +54,6 @@ const ProfileSettingsForm: React.FC<ProfileSettingsFormProps> = ({ profileData, 
         defaultValues: {
             name: profileData.name || '',
             region: profileData.region || null, // Initialize region from profile data
-            status: profileData.status === 'active' || profileData.status === 'inactive' ? profileData.status : 'active', // Initialize status, default to 'active' if invalid/null
         },
         mode: 'onChange', // Validate on change
     });
@@ -75,9 +73,6 @@ const ProfileSettingsForm: React.FC<ProfileSettingsFormProps> = ({ profileData, 
             }
             if (data.region !== undefined) {
                 updates.region = data.region || null; // Store empty string as null if desired
-            }
-             if (data.status !== undefined) {
-                updates.status = data.status; // Add status to updates
             }
             // Add other fields from 'data' if they are part of the form schema
 
@@ -139,32 +134,6 @@ const ProfileSettingsForm: React.FC<ProfileSettingsFormProps> = ({ profileData, 
                                 {/* Pass null if field value is empty string to match Supabase type */}
                                 <Input placeholder="Your region" {...field} value={field.value ?? ''} onChange={e => field.onChange(e.target.value === '' ? null : e.target.value)} />
                             </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-
-                {/* Status Field */}
-                <FormField
-                    control={form.control}
-                    name="status"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormLabel>Status</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                <FormControl>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select your status" />
-                                    </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                    <SelectItem value="active">Active</SelectItem>
-                                    <SelectItem value="inactive">Inactive</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <FormDescription>
-                                Set your current availability status.
-                            </FormDescription>
                             <FormMessage />
                         </FormItem>
                     )}
