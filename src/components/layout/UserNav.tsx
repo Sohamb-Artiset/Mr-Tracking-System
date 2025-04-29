@@ -40,8 +40,8 @@ export function UserNav({ userName, userRole }: UserNavProps) {
   return (
     <div className="flex items-center space-x-2"> {/* Add a container for name, role, and button */}
       <div className="flex items-center space-x-1"> {/* Container for name and role, now a flex row */}
-        <p className={`font-medium ${userRole === 'admin' ? 'text-3xl' : 'text-xl'}`}>{userName}-</p> {/* Increased name text size */}
-        <p className={`text-muted-foreground capitalize font-bold ${userRole === 'admin' ? 'text-3xl' : 'text-xl'}`}> {/* Increased Admin/MR text size and made bold */}
+        <p className={`font-medium ${userRole === 'admin' ? 'text-xl' : 'text-xl'}`}>{userName}-</p> {/* Increased name text size */}
+        <p className={`text-muted-foreground capitalize font-bold ${userRole === 'admin' ? 'text-xl' : 'text-xl'}`}> {/* Increased Admin/MR text size and made bold */}
           {userRole === 'mr' ? 'Medical Representative' : 'Admin'}
         </p>
       </div>
