@@ -40,6 +40,7 @@ interface ReportEntry {
   totalOrder: number; // This will now represent the quantity ordered
   totalValue: number;
   status: string;
+  uniqueRowId: string; // Added for unique table keys
 }
 
 // Types for filter options
@@ -204,14 +205,16 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
       const mrMap = new Map(mrProfiles?.map(profile => [profile.id, profile.name]) || []);
 
       // Process the data
-      const processedData = (visitsData || []).flatMap(visit => {
+      const processedData = (visitsData || []).flatMap((visit, visitIndex) => { // Added visitIndex for key fallback
         const orders = visit.visit_orders || [];
         const mrName = mrMap.get(visit.mr_id) || 'N/A';
         const doctorName = visit.doctors?.name || 'N/A';
 
         // Create a separate entry for each medicine ordered
-        return orders.map(order => ({
-          id: visit.id,
+        return orders.map((order, orderIndex) => ({ // Added orderIndex for key fallback
+          // Create a unique ID for the table row key
+          uniqueRowId: `${visit.id}-${order.medicines?.id || orderIndex}`, // Combine visit ID and medicine ID/index
+          id: visit.id, // Keep original visit ID if needed elsewhere
           mrId: visit.mr_id,
           mrName: mrName,
           doctorId: visit.doctors?.id || '',
@@ -258,10 +261,11 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
             if (selectedDoctor !== 'all' && entry.doctor !== selectedDoctor) {
                 return false;
             }
-            // Medicine Filter
-            if (selectedMedicine !== 'all' && entry.medicine !== selectedMedicine) {
+            // Medicine Filter - Now compares by ID
+            if (selectedMedicine !== 'all' && entry.medicineId !== selectedMedicine) {
                 return false;
             }
+
             // Date Range Filter
             // Parse entry.date string for comparison. Assumes 'YYYY-MM-DD' format.
             // Date Range Filter - Using date-fns for robust comparison
@@ -337,15 +341,22 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
             {/* Medicine Filter */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Medicine</label>
+              {/* Ensure value is compared against selectedMedicine state (which will hold ID or 'all') */}
               <Select value={selectedMedicine} onValueChange={setSelectedMedicine}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select Medicine" />
+                  {/* Display the selected medicine's name, or placeholder */}
+                  <SelectValue placeholder="Select Medicine">
+                    {selectedMedicine === 'all'
+                      ? 'All Medicines'
+                      : medicineOptions.find(opt => opt.value === selectedMedicine)?.label ?? 'Select Medicine'}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Medicines</SelectItem>
+                  {/* Set the *value* of the SelectItem to the medicine ID (med.value) */}
                   {medicineOptions.map((med) => (
-                    <SelectItem key={med.value} value={med.label}>
-                      {med.label}
+                    <SelectItem key={med.value} value={med.value}>
+                      {med.label} {/* Display the medicine name (med.label) */}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -436,7 +447,8 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
           <TableBody>
             {filteredData.length > 0 ? (
               filteredData.map((entry) => (
-                <TableRow key={entry.id}>
+                // Use the uniqueRowId generated during processing for the key
+                <TableRow key={entry.uniqueRowId}>
                   {isAdmin && <TableCell>{entry.mrName}</TableCell>}
                   <TableCell>{format(parseISO(entry.date), "MMM d, yyyy")}</TableCell>
                   <TableCell>{entry.doctor}</TableCell>
