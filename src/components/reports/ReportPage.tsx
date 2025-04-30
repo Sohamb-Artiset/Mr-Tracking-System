@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { format, parseISO, isBefore, isAfter, startOfDay, endOfDay } from "date-fns"; // Import more date-fns functions
 import { Calendar as CalendarIcon } from "lucide-react";
 import { useAuth } from '@/hooks/useAuth'; // Add this import
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination"; // Import pagination components
 
 interface ReportPageProps {
   userRole: 'admin' | 'mr';
@@ -52,9 +53,14 @@ interface FilterOption {
 const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
   const { user } = useAuth(); // Get the current user
   // General state
-  const [reportData, setReportData] = useState<ReportEntry[]>([]);
+  const [reportData, setReportData] = useState<ReportEntry[]>([]); // This will now hold the paginated and filtered data
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [totalReports, setTotalReports] = useState(0); // State to hold total count of filtered data
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10); // Default items per page
 
   // Search state (for MR view)
   const [searchTerm, setSearchTerm] = useState('');
@@ -69,12 +75,18 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
 
+  // State to hold the full processed data before client-side pagination and filtering
+  const [processedData, setProcessedData] = useState<ReportEntry[]>([]);
+
+
   // Fetch initial data and filter options
   useEffect(() => {
     // Reset common state on role change
     setReportData([]);
+    setProcessedData([]); // Reset processed data as well
     setError(null);
     setLoading(true); // Start loading immediately
+    setCurrentPage(1); // Reset to first page on role change
 
     if (userRole === 'mr') {
       // Reset MR-specific state
@@ -93,6 +105,22 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
         setLoading(false); // No role, stop loading
     }
   }, [userRole]);
+
+  // Apply filtering and pagination whenever relevant states change
+  useEffect(() => {
+      // This useEffect will now handle filtering and pagination on processedData
+      // The actual data fetching is triggered by the first useEffect or filter/pagination changes
+      // within the fetchReports function itself (which now fetches all data).
+      // We need to ensure fetchReports is called when filters/pagination change.
+      // Let's keep the fetchReports call in the dependency array of the first useEffect
+      // and call it explicitly when filters/pagination change. This might lead to double fetching
+      // initially, but we can optimize later if needed.
+
+      // Re-fetch reports when filters or pagination change
+      fetchReports();
+
+  }, [currentPage, itemsPerPage, selectedMr, selectedDoctor, selectedMedicine, startDate, endDate, searchTerm]); // Add dependencies
+
 
   const resetAdminFilters = () => {
       setSelectedMr('all');
@@ -143,13 +171,6 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
         if (!userId) throw new Error('User not found');
       }
 
-      // First, get total count for debugging
-      const { count: totalCount } = await supabase
-        .from('visits')
-        .select('*', { count: 'exact', head: true });
-
-      console.log('Total visits in database:', totalCount);
-
       // Build the main query with left joins
       let query = supabase
         .from('visits')
@@ -171,24 +192,19 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
               name
             )
           )
-        `);
+        `); // Removed count: 'exact' here as we'll count processed data
 
       // Apply MR filter if not admin
       if (userId) {
         query = query.eq('mr_id', userId);
       }
 
-      // Apply search if provided
-      if (searchTerm) {
-        query = query.ilike('doctors.name', `%${searchTerm}%`);
-      }
-
-      // Execute query
+      // Execute query (fetch all relevant data based on initial filters like MR)
       const { data: visitsData, error: visitsError } = await query.order('date', { ascending: false });
 
       if (visitsError) throw visitsError;
 
-      console.log('Visits data fetched:', visitsData?.length);
+      console.log('Visits data fetched (before processing):', visitsData?.length);
 
       // Get unique MR IDs from the visits
       const mrIds = [...new Set(visitsData?.map(visit => visit.mr_id) || [])];
@@ -205,7 +221,7 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
       const mrMap = new Map(mrProfiles?.map(profile => [profile.id, profile.name]) || []);
 
       // Process the data
-      const processedData = (visitsData || []).flatMap((visit, visitIndex) => { // Added visitIndex for key fallback
+      const processedResult = (visitsData || []).flatMap((visit, visitIndex) => { // Added visitIndex for key fallback
         const orders = visit.visit_orders || [];
         const mrName = mrMap.get(visit.mr_id) || 'N/A';
         const doctorName = visit.doctors?.name || 'N/A';
@@ -228,10 +244,13 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
         }));
       });
 
-      console.log('Processed data length:', processedData.length);
-      setReportData(processedData);
+      console.log('Processed data length (after flatMap):', processedResult.length);
+      setProcessedData(processedResult); // Store the full processed data
+
     } catch (err) {
       console.error('Error fetching reports:', err);
+      // Log the full error object for more details
+      console.error(err);
       setError('Failed to fetch reports. Please try again.');
     } finally {
       setLoading(false);
@@ -239,59 +258,60 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
   };
 
   // Filter logic updated for specific filters in Admin view
+  // Now applies client-side filtering to the *full* processed data before pagination
   const filteredData = useMemo(() => {
-    if (userRole === 'mr') {
-        // MR View: Simple text search
-        const lowerCaseSearchTerm = searchTerm.toLowerCase();
-        if (!lowerCaseSearchTerm) return reportData; // No search term, return all
-        return reportData.filter(entry =>
-            entry.doctor.toLowerCase().includes(lowerCaseSearchTerm) ||
-            entry.medicine.toLowerCase().includes(lowerCaseSearchTerm) ||
-            entry.date.toLowerCase().includes(lowerCaseSearchTerm) || // Simple date string search for MR
-            entry.status.toLowerCase().includes(lowerCaseSearchTerm)
-        );
-    } else if (userRole === 'admin') {
-        // Admin View: Apply specific filters
-        return reportData.filter(entry => {
-            // MR Filter
+    let currentData = processedData; // Use the full processed data before pagination
+
+    // Apply client-side filtering only for Admin view based on selected options
+    if (userRole === 'admin') {
+        currentData = currentData.filter(entry => {
+            // MR Filter (client-side)
             if (selectedMr !== 'all' && entry.mrName !== selectedMr) {
                 return false;
             }
-            // Doctor Filter
-            if (selectedDoctor !== 'all' && entry.doctor !== selectedDoctor) {
-                return false;
+            // Doctor Filter (client-side)
+            if (selectedDoctor !== 'all' && entry.doctorId !== selectedDoctor) {
+                 return false;
             }
-            // Medicine Filter - Now compares by ID
+            // Medicine Filter (client-side)
             if (selectedMedicine !== 'all' && entry.medicineId !== selectedMedicine) {
                 return false;
             }
 
-            // Date Range Filter
-            // Parse entry.date string for comparison. Assumes 'YYYY-MM-DD' format.
-            // Date Range Filter - Using date-fns for robust comparison
-            try {
-                // Assuming entry.date is in 'YYYY-MM-DD' format from Supabase
-                const entryDate = parseISO(entry.date); // Parse the date string
-
-                // Check against start date (inclusive)
+            // Date Range Filter (client-side)
+             try {
+                const entryDate = parseISO(entry.date);
                 if (startDate && isBefore(entryDate, startOfDay(startDate))) {
                     return false;
                 }
-                // Check against end date (inclusive)
                 if (endDate && isAfter(entryDate, endOfDay(endDate))) {
                     return false;
                 }
             } catch (e) {
-                console.error("Error parsing or comparing date for filtering:", entry.date, e);
-                // If parsing fails, maybe exclude the entry or log more details
-                return false; // Exclude if date is invalid for filtering
+                console.error("Error parsing or comparing date for client-side filtering:", entry.date, e);
+                return false;
             }
 
             return true; // Passes all active filters
         });
+    } else if (userRole === 'mr' && searchTerm) {
+         // MR View: Simple text search (client-side on the full data)
+         const lowerCaseSearchTerm = searchTerm.toLowerCase();
+         currentData = currentData.filter(entry =>
+             entry.doctor.toLowerCase().includes(lowerCaseSearchTerm) ||
+             entry.medicine.toLowerCase().includes(lowerCaseSearchTerm) ||
+             entry.date.toLowerCase().includes(lowerCaseSearchTerm) || // Simple date string search for MR
+             entry.status.toLowerCase().includes(lowerCaseSearchTerm)
+         );
     }
-    return []; // Default empty if no role matches
-  }, [userRole, reportData, searchTerm, selectedMr, selectedDoctor, selectedMedicine, startDate, endDate]);
+
+    // After filtering, update the total count and apply client-side pagination
+    setTotalReports(currentData.length);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return currentData.slice(startIndex, endIndex);
+
+  }, [userRole, processedData, searchTerm, selectedMr, selectedDoctor, selectedMedicine, startDate, endDate, currentPage, itemsPerPage]); // Add dependencies
 
   // Generic function to render the table, adaptable for both roles
   const renderReportTable = (isAdmin: boolean) => (
@@ -481,6 +501,64 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
       {/* Render the appropriate table based on userRole */}
       {userRole === 'admin' && renderReportTable(true)}
       {userRole === 'mr' && renderReportTable(false)}
+
+      {/* Pagination */}
+      {!loading && !error && filteredData.length > 0 && (
+          <div className="flex justify-between items-center mt-4">
+              <div className="flex items-center space-x-2">
+                  <label className="text-sm font-medium">Items per page:</label>
+                  <Select value={String(itemsPerPage)} onValueChange={(value) => setItemsPerPage(Number(value))}>
+                      <SelectTrigger className="w-[80px]">
+                          <SelectValue placeholder="10" />
+                      </SelectTrigger>
+                      <SelectContent>
+                          <SelectItem value="10">10</SelectItem>
+                          <SelectItem value="30">30</SelectItem>
+                          <SelectItem value="100">100</SelectItem>
+                      </SelectContent>
+                  </Select>
+              </div>
+              <Pagination>
+                  <PaginationContent>
+                      <PaginationItem>
+                          <PaginationPrevious
+                              href="#"
+                              onClick={(e) => {
+                                  e.preventDefault();
+                                  if (currentPage > 1) setCurrentPage(currentPage - 1);
+                              }}
+                              isActive={currentPage > 1} // Use isActive to control styling/clickability
+                          />
+                      </PaginationItem>
+                      {/* Render pagination links dynamically based on total pages */}
+                      {Array.from({ length: Math.ceil(totalReports / itemsPerPage) }, (_, i) => (
+                          <PaginationItem key={i}>
+                              <PaginationLink
+                                  href="#"
+                                  onClick={(e) => {
+                                      e.preventDefault();
+                                      setCurrentPage(i + 1);
+                                  }}
+                                  isActive={currentPage === i + 1}
+                              >
+                                  {i + 1}
+                              </PaginationLink>
+                          </PaginationItem>
+                      ))}
+                      <PaginationItem>
+                          <PaginationNext
+                              href="#"
+                              onClick={(e) => {
+                                  e.preventDefault();
+                                  if (currentPage < Math.ceil(totalReports / itemsPerPage)) setCurrentPage(currentPage + 1);
+                              }}
+                              isActive={currentPage < Math.ceil(totalReports / itemsPerPage)} // Use isActive
+                          />
+                      </PaginationItem>
+                  </PaginationContent>
+              </Pagination>
+          </div>
+      )}
     </div>
   );
 };
