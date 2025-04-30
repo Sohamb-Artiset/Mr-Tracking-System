@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -22,6 +24,8 @@ export function VisitsList() {
   const [visits, setVisits] = useState<Visit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isViewVisitDialogOpen, setIsViewVisitDialogOpen] = useState(false);
+  const [viewingVisit, setViewingVisit] = useState<Visit | null>(null);
 
   useEffect(() => {
     const fetchVisits = async () => {
@@ -40,7 +44,7 @@ export function VisitsList() {
         .select(`
           *,
           doctors (name, hospital),
-          visit_orders (*)
+          visit_orders (id, quantity, medicine: medicines (name))
         `)
         .eq("mr_id", mrId)
         .order("date", { ascending: false });
@@ -54,7 +58,11 @@ export function VisitsList() {
           ...visit,
           doctorName: visit.doctors?.name || "N/A",
           hospital: visit.doctors?.hospital || "N/A",
-          orders: visit.visit_orders || [] // Include fetched orders
+          orders: visit.visit_orders.map(order => ({
+            id: order.id,
+            quantity: order.quantity,
+            medicine_name: order.medicine?.name || "N/A" // Extract medicine name
+          })) || []
         }));
         setVisits(formattedVisits as Visit[]);
       }
@@ -68,7 +76,8 @@ export function VisitsList() {
   const filteredVisits = visits.filter(
     (visit) =>
       visit.doctorName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      visit.hospital?.toLowerCase().includes(searchTerm.toLowerCase())
+      visit.hospital?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      visit.orders?.some(order => order.medicine_name.toLowerCase().includes(searchTerm.toLowerCase())) // Include medicine name in search
   );
 
   if (isLoading) {
@@ -174,7 +183,11 @@ export function VisitsList() {
                 <TableRow
                   key={visit.id}
                   className="cursor-pointer"
-                  onClick={() => navigate(`/mr/visits/${visit.id}`)}
+                  onClick={() => {
+                    setViewingVisit(visit);
+                    setIsViewVisitDialogOpen(true);
+                    console.log("Viewing Visit Orders:", visit.orders); // Log the visit orders data
+                  }}
                 >
                   <TableCell>
                     {format(new Date(visit.date), "MMM d, yyyy")}
@@ -182,7 +195,6 @@ export function VisitsList() {
                   <TableCell className="font-medium">{visit.doctorName}</TableCell>
                   <TableCell className="hidden md:table-cell">{visit.hospital}</TableCell>
                   <TableCell className="hidden lg:table-cell">
-                    {/* You might need to fetch orders separately or adjust the query */}
                     {visit.orders?.length || 0} items
                   </TableCell>
                   <TableCell>
@@ -206,6 +218,77 @@ export function VisitsList() {
           </TableBody>
         </Table>
       </div>
+
+      {/* View Visit Dialog */}
+      <Dialog open={isViewVisitDialogOpen} onOpenChange={setIsViewVisitDialogOpen}>
+        <DialogContent className="sm:max-w-[550px]">
+          <DialogHeader>
+            <DialogTitle>Visit Details</DialogTitle>
+            <DialogDescription>
+              Viewing details for the visit on {viewingVisit?.date ? format(new Date(viewingVisit.date), "MMM d, yyyy") : "N/A"}.
+            </DialogDescription>
+          </DialogHeader>
+          {viewingVisit && (
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label>Date</Label>
+                  <p className="text-sm p-2 border rounded bg-muted">{format(new Date(viewingVisit.date), "MMM d, yyyy")}</p>
+                </div>
+                <div className="grid gap-2">
+                  <Label>Doctor</Label>
+                  <p className="text-sm p-2 border rounded bg-muted">{viewingVisit.doctorName}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Hospital / Clinic</Label>
+                <p className="text-sm p-2 border rounded bg-muted">{viewingVisit.hospital}</p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Orders ({viewingVisit.orders?.length || 0})</Label>
+                {viewingVisit.orders && viewingVisit.orders.length > 0 ? (
+                  <ul className="list-disc list-inside text-sm p-2 border rounded bg-muted">
+                    {viewingVisit.orders.map((order, index) => (
+                      <li key={order.id || index}>{order.medicine_name} ({order.quantity})</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm p-2 border rounded bg-muted">- No orders -</p>
+                )}
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Notes</Label>
+                <p className="text-sm p-2 border rounded bg-muted">{viewingVisit.notes || "-"}</p>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Status</Label>
+                <p className={`text-sm p-2 border rounded ${
+                      viewingVisit.status === "approved"
+                        ? "bg-green-100 text-green-800"
+                        : viewingVisit.status === "pending"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-orange-100 text-orange-800"
+                    }`}>
+                  {viewingVisit.status === "approved"
+                    ? "Approved"
+                    : viewingVisit.status === "pending"
+                    ? "Pending"
+                    : "Changes Requested"}
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewVisitDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
