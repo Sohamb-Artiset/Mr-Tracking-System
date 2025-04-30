@@ -150,7 +150,7 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
                 )
               `)
               .eq('mr_id', mrId)
-          : Promise.resolve({ data: [], error: null }), // If 'all' MRs, return empty data for doctors/medicines
+          : supabase.from('doctors').select('id, name'), // If 'all' MRs, fetch all doctors
 
         mrId === 'all' // Only fetch all medicines if 'all' MRs are selected initially
           ? supabase.from('medicines').select('id, name')
@@ -166,15 +166,15 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
           const visitedDoctors = new Map<string, FilterOption>();
           const orderedMedicines = new Map<string, FilterOption>();
 
+          // When mrId is not 'all', 'doctors.data' contains visit objects with nested doctor and medicine data
           if (doctors.error) throw doctors.error;
-          if (medicines.error) throw medicines.error; // This error should not happen if mrId !== 'all'
 
           interface VisitWithRelations {
               doctors: { id: string; name: string } | null;
               visit_orders: { medicines: { id: string; name: string } | null }[] | null;
           }
 
-          doctors.data?.forEach((visit: VisitWithRelations) => {
+          (doctors.data as VisitWithRelations[])?.forEach((visit) => {
               if (visit.doctors) {
                   visitedDoctors.set(visit.doctors.id, { value: visit.doctors.id, label: visit.doctors.name });
               }
@@ -190,10 +190,11 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
 
       } else {
           // If 'all' MRs, set all doctors and medicines initially
-          if (doctors.error) throw doctors.error; // This error should not happen if mrId === 'all'
+          // In this case, 'doctors.data' is an array of doctor objects
+          if (doctors.error) throw doctors.error;
           if (medicines.error) throw medicines.error;
 
-          setDoctorOptions(doctors.data?.map(doc => ({ value: doc.id, label: doc.name })) || []);
+          setDoctorOptions((doctors.data as { id: string; name: string }[])?.map(doc => ({ value: doc.id, label: doc.name })) || []);
           setMedicineOptions(medicines.data?.map(med => ({ value: med.id, label: med.name })) || []);
       }
 
