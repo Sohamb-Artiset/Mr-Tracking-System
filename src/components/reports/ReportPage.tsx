@@ -106,20 +106,16 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
     }
   }, [userRole]);
 
-  // Apply filtering and pagination whenever relevant states change
+  // Fetch filter options and reports whenever relevant states change
   useEffect(() => {
-      // This useEffect will now handle filtering and pagination on processedData
-      // The actual data fetching is triggered by the first useEffect or filter/pagination changes
-      // within the fetchReports function itself (which now fetches all data).
-      // We need to ensure fetchReports is called when filters/pagination change.
-      // Let's keep the fetchReports call in the dependency array of the first useEffect
-      // and call it explicitly when filters/pagination change. This might lead to double fetching
-      // initially, but we can optimize later if needed.
-
+      // Fetch filter options only for admin role
+      if (userRole === 'admin') {
+          fetchFilterOptions(selectedMr); // Pass selectedMr to fetchFilterOptions
+      }
       // Re-fetch reports when filters or pagination change
       fetchReports();
 
-  }, [currentPage, itemsPerPage, selectedMr, selectedDoctor, selectedMedicine, startDate, endDate, searchTerm]); // Add dependencies
+  }, [currentPage, itemsPerPage, selectedMr, selectedDoctor, selectedMedicine, startDate, endDate, searchTerm, userRole]); // Add userRole dependency
 
 
   const resetAdminFilters = () => {
@@ -130,27 +126,84 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
       setEndDate(undefined);
   }
 
-  const fetchFilterOptions = async () => {
+  const fetchFilterOptions = async (mrId: string = 'all') => { // Accept mrId parameter
     setLoading(true);
     try {
       const [mrs, doctors, medicines] = await Promise.all([
+        // Always fetch all MRs for the MR filter dropdown
         supabase.from('profiles').select('id, name').eq('role', 'mr'),
-        supabase.from('doctors').select('id, name'),
-        supabase.from('medicines').select('id, name')
+
+        // Fetch doctors and medicines based on selected MR if not 'all'
+        mrId !== 'all'
+          ? supabase
+              .from('visits')
+              .select(`
+                doctors!inner (
+                  id,
+                  name
+                ),
+                visit_orders!inner (
+                  medicines!inner (
+                    id,
+                    name
+                  )
+                )
+              `)
+              .eq('mr_id', mrId)
+          : Promise.resolve({ data: [], error: null }), // If 'all' MRs, return empty data for doctors/medicines
+
+        mrId === 'all' // Only fetch all medicines if 'all' MRs are selected initially
+          ? supabase.from('medicines').select('id, name')
+          : Promise.resolve({ data: [], error: null }), // If specific MR, medicines are fetched via visits
       ]);
 
       if (mrs.error) throw mrs.error;
-      if (doctors.error) throw doctors.error;
-      if (medicines.error) throw medicines.error;
 
       setMrOptions(mrs.data?.map(mr => ({ value: mr.id, label: mr.name })) || []);
-      setDoctorOptions(doctors.data?.map(doc => ({ value: doc.id, label: doc.name })) || []);
-      setMedicineOptions(medicines.data?.map(med => ({ value: med.id, label: med.name })) || []);
+
+      // Process fetched doctors and medicines
+      if (mrId !== 'all') {
+          const visitedDoctors = new Map<string, FilterOption>();
+          const orderedMedicines = new Map<string, FilterOption>();
+
+          if (doctors.error) throw doctors.error;
+          if (medicines.error) throw medicines.error; // This error should not happen if mrId !== 'all'
+
+          interface VisitWithRelations {
+              doctors: { id: string; name: string } | null;
+              visit_orders: { medicines: { id: string; name: string } | null }[] | null;
+          }
+
+          doctors.data?.forEach((visit: VisitWithRelations) => {
+              if (visit.doctors) {
+                  visitedDoctors.set(visit.doctors.id, { value: visit.doctors.id, label: visit.doctors.name });
+              }
+              visit.visit_orders?.forEach((order) => {
+                  if (order.medicines) {
+                      orderedMedicines.set(order.medicines.id, { value: order.medicines.id, label: order.medicines.name });
+                  }
+              });
+          });
+
+          setDoctorOptions(Array.from(visitedDoctors.values()));
+          setMedicineOptions(Array.from(orderedMedicines.values()));
+
+      } else {
+          // If 'all' MRs, set all doctors and medicines initially
+          if (doctors.error) throw doctors.error; // This error should not happen if mrId === 'all'
+          if (medicines.error) throw medicines.error;
+
+          setDoctorOptions(doctors.data?.map(doc => ({ value: doc.id, label: doc.name })) || []);
+          setMedicineOptions(medicines.data?.map(med => ({ value: med.id, label: med.name })) || []);
+      }
+
 
     } catch (err: unknown) {
       const error = err as SupabaseError;
       console.error("Error fetching filter options:", error);
       setError(error.message || 'Failed to load filter options.');
+      // Keep existing options or clear based on desired behavior on error
+      // For now, let's clear them on error
       setMrOptions([]);
       setDoctorOptions([]);
       setMedicineOptions([]);
@@ -194,12 +247,16 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
           )
         `); // Removed count: 'exact' here as we'll count processed data
 
-      // Apply MR filter if not admin
-      if (userId) {
+      // Apply MR filter based on user role and selection
+      if (userRole === 'mr' && userId) {
+        // MR view: filter by the logged-in MR's ID
         query = query.eq('mr_id', userId);
+      } else if (userRole === 'admin' && selectedMr !== 'all') {
+        // Admin view: filter by the selected MR's ID
+        query = query.eq('mr_id', selectedMr);
       }
 
-      // Execute query (fetch all relevant data based on initial filters like MR)
+      // Execute query (fetch relevant data based on server-side filters)
       const { data: visitsData, error: visitsError } = await query.order('date', { ascending: false });
 
       if (visitsError) throw visitsError;
@@ -262,13 +319,11 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
   const filteredData = useMemo(() => {
     let currentData = processedData; // Use the full processed data before pagination
 
-    // Apply client-side filtering only for Admin view based on selected options
+    // Apply client-side filtering for Doctor, Medicine, and Date Range in Admin view
     if (userRole === 'admin') {
         currentData = currentData.filter(entry => {
-            // MR Filter (client-side)
-            if (selectedMr !== 'all' && entry.mrName !== selectedMr) {
-                return false;
-            }
+            // MR Filter is now handled server-side, no need for client-side MR filter here
+
             // Doctor Filter (client-side)
             if (selectedDoctor !== 'all' && entry.doctorId !== selectedDoctor) {
                  return false;
@@ -332,7 +387,7 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
                 <SelectContent>
                   <SelectItem value="all">All MRs</SelectItem>
                   {mrOptions.map((mr) => (
-                    <SelectItem key={mr.value} value={mr.label}>
+                    <SelectItem key={mr.value} value={mr.value}>
                       {mr.label}
                     </SelectItem>
                   ))}
@@ -350,7 +405,7 @@ const ReportPage: React.FC<ReportPageProps> = ({ userRole }) => {
                 <SelectContent>
                   <SelectItem value="all">All Doctors</SelectItem>
                   {doctorOptions.map((doc) => (
-                    <SelectItem key={doc.value} value={doc.label}>
+                    <SelectItem key={doc.value} value={doc.value}>
                       {doc.label}
                     </SelectItem>
                   ))}
