@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { supabase } from "@/integrations/supabase/client";
+import { FaEye, FaEyeSlash } from 'react-icons/fa'; // Assuming react-icons is installed
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,8 @@ type RegisterValues = z.infer<typeof registerSchema>;
 export function AuthForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [isInactiveMrDialogOpen, setIsInactiveMrDialogOpen] = useState(false); // State for the inactive MR dialog
+  const [showLoginPassword, setShowLoginPassword] = useState(false); // State for login password visibility
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false); // State for register password visibility
   const navigate = useNavigate();
 
   // Login form
@@ -215,10 +218,10 @@ export function AuthForm() {
       toast.success("Registration successful! Please wait for admin approval.");
       loginForm.setValue("email", data.email); // Pre-fill email for login
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Registration error:", error);
       
-      if (error.message?.includes("already registered")) {
+      if (error instanceof Error && error.message?.includes("already registered")) {
         registerForm.setError("email", {
           type: "manual",
           message: "Email is already registered",
@@ -267,9 +270,21 @@ export function AuthForm() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input placeholder="******" type="password" {...field} />
-                    </FormControl>
+                    <div className="relative">
+                      <FormControl>
+                        <Input
+                          placeholder="******"
+                          type={showLoginPassword ? "text" : "password"}
+                          {...field}
+                        />
+                      </FormControl>
+                      <div
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer"
+                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                      >
+                        {showLoginPassword ? <FaEyeSlash /> : <FaEye />}
+                      </div>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -321,9 +336,21 @@ export function AuthForm() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input placeholder="******" type="password" {...field} />
-                    </FormControl>
+                    <div className="relative">
+                      <FormControl>
+                        <Input
+                          placeholder="******"
+                          type={showRegisterPassword ? "text" : "password"}
+                          {...field}
+                        />
+                      </FormControl>
+                      <div
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center cursor-pointer"
+                        onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+                      >
+                        {showRegisterPassword ? <FaEyeSlash /> : <FaEye />}
+                      </div>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
