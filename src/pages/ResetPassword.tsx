@@ -68,7 +68,7 @@ const ResetPassword = () => {
       toast.success("Password reset successfully!");
       // Optionally redirect to login after a delay
       setTimeout(() => {
-        navigate("/login");
+        navigate("/AuthForm.tsx");
       }, 3000);
 
     } catch (error: any) {
